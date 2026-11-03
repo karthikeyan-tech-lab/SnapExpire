@@ -36,4 +36,4 @@ jobs:
         with:
           version: latest
       - name: Deploy only SnapExpire API
-        run: supabase functions deploy snapexpire-api --project-ref nbhjommpxxqzomubqqfv --no-verify-jwt
+        run: supabase functions deploy snapexpire-api --remote=nbhjommpxxqzomubqqfv --no-verify-jwt --yes
