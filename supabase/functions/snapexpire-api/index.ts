@@ -3,6 +3,8 @@ const url=Deno.env.get("SUPABASE_URL")!;
 const key=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const db=createClient(url,key);
 const bucket="snapexpire-photos";
+const ratePepper=Deno.env.get("SNAPEXPIRE_RATE_PEPPER");
+const cleanupSecret=Deno.env.get("SNAPEXPIRE_CLEANUP_SECRET");
 const headers={"Access-Control-Allow-Origin":"https://snapexpire.vercel.app","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"content-type","Cache-Control":"no-store"};
 function json(data:unknown,status=200){return new Response(JSON.stringify(data),{status,headers:{...headers,"Content-Type":"application/json"}})}
 function token(){return Array.from(crypto.getRandomValues(new Uint8Array(32)),x=>x.toString(16).padStart(2,"0")).join("")}
@@ -10,12 +12,38 @@ async function hash(s:string){return Array.from(new Uint8Array(await crypto.subt
 const types:Record<string,string>={"image/jpeg":"jpg","image/png":"png","image/webp":"webp"};
 const validId=(s:string)=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 const validToken=(s:string)=>/^[0-9a-f]{64}$/i.test(s);
+async function cleanupExpired(limit=50){
+  const {data:rows,error}=await db.from("shared_photos").select("id,storage_path").lt("expires_at",new Date().toISOString()).is("storage_deleted_at",null).limit(limit);
+  if(error)throw error;
+  let deleted=0,failed=0;
+  for(const row of rows||[]){
+    const result=await db.storage.from(bucket).remove([row.storage_path]);
+    if(result.error){failed++;console.error("Cleanup storage error",row.id,result.error);continue}
+    const updated=await db.from("shared_photos").update({storage_deleted_at:new Date().toISOString(),status:"expired"}).eq("id",row.id).is("storage_deleted_at",null);
+    if(updated.error){failed++;console.error("Cleanup metadata error",row.id,updated.error)}else deleted++;
+  }
+  return {deleted,failed,checked:(rows||[]).length};
+}
 Deno.serve(async req=>{
 if(req.method==="OPTIONS")return new Response(null,{headers});
 const origin=req.headers.get("origin");if(origin&&origin!=="https://snapexpire.vercel.app")return json({error:"Origin not allowed"},403);
 try{
 const u=new URL(req.url),action=u.searchParams.get("action");
+if(action==="cleanup"&&req.method==="POST"){
+  if(!cleanupSecret)return json({error:"Cleanup not configured"},503);
+  const auth=req.headers.get("authorization")||"";
+  if(auth!=="Bearer "+cleanupSecret)return json({error:"Unauthorized"},401);
+  const result=await cleanupExpired();
+  await db.from("snapexpire_upload_limits").delete().lt("window_start",new Date(Date.now()-48*3600000).toISOString());
+  return json(result);
+}
 if(action==="upload"&&req.method==="POST"){
+if(!ratePepper)return json({error:"Rate limiting not configured"},503);
+const clientIp=req.headers.get("cf-connecting-ip")||req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()||"unknown";
+const clientHash=await hash(ratePepper+":"+clientIp);
+const allowed=await db.rpc("snapexpire_allow_upload",{p_client_hash:clientHash});
+if(allowed.error)throw allowed.error;
+if(allowed.data!==true)return json({error:"Upload limit reached. Try again next hour."},429);
 const form=await req.formData(),file=form.get("photo");
 if(!(file instanceof File)||!types[file.type]||file.size===0||file.size>5*1024*1024)return json({error:"Invalid photo"},400);
 if(String(form.get("duration"))!=="5")return json({error:"Only View Once supported"},400);
