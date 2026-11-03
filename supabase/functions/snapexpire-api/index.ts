@@ -5,7 +5,7 @@ const db=createClient(url,key);
 const bucket="snapexpire-photos";
 const ratePepper=Deno.env.get("SNAPEXPIRE_RATE_PEPPER");
 const cleanupSecret=Deno.env.get("SNAPEXPIRE_CLEANUP_SECRET");
-const headers={"Access-Control-Allow-Origin":"https://snapexpire.vercel.app","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"content-type","Cache-Control":"no-store"};
+const headers={"Access-Control-Allow-Origin":"https://snapexpire.vercel.app","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"content-type","Access-Control-Expose-Headers":"X-View-Seconds","Cache-Control":"no-store"};
 function json(data:unknown,status=200){return new Response(JSON.stringify(data),{status,headers:{...headers,"Content-Type":"application/json"}})}
 function token(){return Array.from(crypto.getRandomValues(new Uint8Array(32)),x=>x.toString(16).padStart(2,"0")).join("")}
 async function hash(s:string){return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s))),x=>x.toString(16).padStart(2,"0")).join("")}
@@ -46,11 +46,11 @@ if(allowed.error)throw allowed.error;
 if(allowed.data!==true)return json({error:"Upload limit reached. Try again next hour."},429);
 const form=await req.formData(),file=form.get("photo");
 if(!(file instanceof File)||!types[file.type]||file.size===0||file.size>5*1024*1024)return json({error:"Invalid photo"},400);
-if(String(form.get("duration"))!=="5")return json({error:"Only View Once supported"},400);
+const duration=Number(form.get("duration"));if(!Number.isInteger(duration)||duration<1||duration>10)return json({error:"Choose 1–10 seconds"},400);
 const id=crypto.randomUUID(),receiver=token(),sender=token(),path=id+"."+types[file.type],expires=new Date(Date.now()+600000).toISOString();
 const uploaded=await db.storage.from(bucket).upload(path,file,{contentType:file.type,upsert:false});
 if(uploaded.error)throw uploaded.error;
-const inserted=await db.from("shared_photos").insert({id,storage_path:path,expires_at:expires,view_once:true,receiver_hash:await hash(receiver),sender_hash:await hash(sender)});
+const inserted=await db.from("shared_photos").insert({id,storage_path:path,expires_at:expires,view_once:true,duration_seconds:duration,receiver_hash:await hash(receiver),sender_hash:await hash(sender)});
 if(inserted.error){await db.storage.from(bucket).remove([path]);throw inserted.error}
 return json({id,receiverToken:receiver,senderToken:sender,expiresAt:expires});
 }
@@ -58,7 +58,7 @@ if(action==="view"&&req.method==="GET"){
 const id=u.searchParams.get("id")||"",receiver=u.searchParams.get("token")||"";
 if(!validId(id)||!validToken(receiver))return json({error:"Invalid link"},400);
 const receiverHash=await hash(receiver);
-const {data:record,error}=await db.from("shared_photos").select("storage_path,view_once,expires_at,receiver_hash,status").eq("id",id).eq("receiver_hash",receiverHash).maybeSingle();
+const {data:record,error}=await db.from("shared_photos").select("storage_path,view_once,duration_seconds,expires_at,receiver_hash,status").eq("id",id).eq("receiver_hash",receiverHash).maybeSingle();
 if(error)throw error;
 if(!record||Date.parse(record.expires_at)<=Date.now())return json({error:"Photo unavailable or expired"},410);
 if(!record.view_once)return json({error:"Unsupported photo mode"},410);
@@ -74,12 +74,12 @@ const removed=await db.storage.from(bucket).remove([path]);
 if(removed.error)throw removed.error;
 const updated=await db.from("shared_photos").update({storage_deleted_at:new Date().toISOString()}).eq("id",id);
 if(updated.error)console.error("Storage deleted, metadata update failed",updated.error);
-return new Response(download.data,{headers:{...headers,"Content-Type":download.data.type||"image/jpeg","Content-Disposition":"inline","X-Content-Type-Options":"nosniff"}});
+return new Response(download.data,{headers:{...headers,"Content-Type":download.data.type||"image/jpeg","Content-Disposition":"inline","X-Content-Type-Options":"nosniff","X-View-Seconds":String(record.duration_seconds||5)}});
 }
 if(action==="status"&&req.method==="GET"){
 const id=u.searchParams.get("id")||"",sender=u.searchParams.get("token")||"";
 if(!validId(id)||!validToken(sender))return json({error:"Invalid tracking link"},400);
-const {data,error}=await db.from("shared_photos").select("created_at,expires_at,opened_at,viewed_at,closed_at,status,storage_deleted_at").eq("id",id).eq("sender_hash",await hash(sender)).maybeSingle();
+const {data,error}=await db.from("shared_photos").select("created_at,expires_at,opened_at,viewed_at,closed_at,status,storage_deleted_at,duration_seconds").eq("id",id).eq("sender_hash",await hash(sender)).maybeSingle();
 if(error)throw error;if(!data)return json({error:"Not found"},404);
 return json({...data,expired:Date.parse(data.expires_at)<=Date.now()});
 }
