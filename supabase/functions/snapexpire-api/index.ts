@@ -2,7 +2,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const url=Deno.env.get("SUPABASE_URL")!;
 const key=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const db=createClient(url,key);
-const bucket="snapexpire-photos";\nconst previewBucket="snapexpire-previews";
+const bucket="snapexpire-photos";
+const previewBucket="snapexpire-previews";
 const ratePepper=Deno.env.get("SNAPEXPIRE_RATE_PEPPER");
 const cleanupSecret=Deno.env.get("SNAPEXPIRE_CLEANUP_SECRET");
 const headers={"Access-Control-Allow-Origin":"https://snapexpire.vercel.app","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"content-type","Access-Control-Expose-Headers":"X-View-Seconds, X-Watermark","Cache-Control":"no-store"};
@@ -18,7 +19,8 @@ async function cleanupExpired(limit=50){
   if(error)throw error;
   let deleted=0,failed=0;
   for(const row of rows||[]){
-    const result=await db.storage.from(bucket).remove([row.storage_path]);\n    await db.storage.from(previewBucket).remove([row.short_code+".jpg",row.short_code+".png",row.short_code+".webp"]);
+    const result=await db.storage.from(bucket).remove([row.storage_path]);
+    await db.storage.from(previewBucket).remove([row.short_code+".jpg",row.short_code+".png",row.short_code+".webp"]);
     if(result.error){failed++;console.error("Cleanup storage error",row.id,result.error);continue}
     const updated=await db.from("shared_photos").update({storage_deleted_at:new Date().toISOString(),status:"expired"}).eq("id",row.id).is("storage_deleted_at",null);
     if(updated.error){failed++;console.error("Cleanup metadata error",row.id,updated.error)}else deleted++;
@@ -47,10 +49,16 @@ if(allowed.error)throw allowed.error;
 if(allowed.data!==true)return json({error:"Upload limit reached. Try again next hour."},429);
 const form=await req.formData(),file=form.get("photo");
 if(!(file instanceof File)||!types[file.type]||file.size===0||file.size>5*1024*1024)return json({error:"Invalid photo"},400);
-const preview=form.get("preview");\nif(preview!==null&&(!(preview instanceof File)||!types[preview.type]||preview.size===0||preview.size>2*1024*1024))return json({error:"Invalid preview photo (max 2 MB)"},400);\nconst duration=Number(form.get("duration"));if(!Number.isInteger(duration)||duration<1||duration>10)return json({error:"Choose 1–10 seconds"},400);
+const preview=form.get("preview");
+if(preview!==null&&(!(preview instanceof File)||!types[preview.type]||preview.size===0||preview.size>2*1024*1024))return json({error:"Invalid preview photo (max 2 MB)"},400);
+const duration=Number(form.get("duration"));if(!Number.isInteger(duration)||duration<1||duration>10)return json({error:"Choose 1–10 seconds"},400);
 const id=crypto.randomUUID(),receiver=token(),sender=token(),code=shortCode(),watermark=form.get("watermark")!=="0",path=id+"."+types[file.type],expires=new Date(Date.now()+600000).toISOString();
 const uploaded=await db.storage.from(bucket).upload(path,file,{contentType:file.type,upsert:false});
-if(uploaded.error)throw uploaded.error;\nif(preview instanceof File){\n  const previewUpload=await db.storage.from(previewBucket).upload(code+"."+types[preview.type],preview,{contentType:preview.type,upsert:false});\n  if(previewUpload.error){await db.storage.from(bucket).remove([path]);throw new Error("Preview upload failed. Apply preview storage migration first.");}\n}
+if(uploaded.error)throw uploaded.error;
+if(preview instanceof File){
+  const previewUpload=await db.storage.from(previewBucket).upload(code+"."+types[preview.type],preview,{contentType:preview.type,upsert:false});
+  if(previewUpload.error){await db.storage.from(bucket).remove([path]);throw new Error("Preview upload failed. Apply preview storage migration first.");}
+}
 const inserted=await db.from("shared_photos").insert({id,storage_path:path,expires_at:expires,view_once:true,duration_seconds:duration,short_code:code,watermark_enabled:watermark,receiver_hash:await hash(receiver),sender_hash:await hash(sender)});
 if(inserted.error){await db.storage.from(bucket).remove([path]);if(preview instanceof File)await db.storage.from(previewBucket).remove([code+"."+types[preview.type]]);throw inserted.error}
 return json({id,shortCode:code,receiverToken:receiver,senderToken:sender,expiresAt:expires});
@@ -90,7 +98,8 @@ const recordDeletion=async()=>{
   const updated=await db.from("shared_photos").update({storage_deleted_at:new Date().toISOString()}).eq("id",id);
   if(updated.error)console.error("Storage deleted, metadata update failed",updated.error);
 };
-EdgeRuntime.waitUntil(recordDeletion());\nEdgeRuntime.waitUntil(db.storage.from(previewBucket).remove([(code||"")+".jpg",(code||"")+".png",(code||"")+".webp"]).then(()=>{}));
+EdgeRuntime.waitUntil(recordDeletion());
+EdgeRuntime.waitUntil(db.storage.from(previewBucket).remove([(code||"")+".jpg",(code||"")+".png",(code||"")+".webp"]).then(()=>{}));
 return new Response(download.data,{headers:{...headers,"Content-Type":download.data.type||"image/jpeg","Content-Disposition":"inline","X-Content-Type-Options":"nosniff","X-View-Seconds":String(record.duration_seconds||5),"X-Watermark":record.watermark_enabled?"1":"0"}});
 }
 if(action==="status"&&req.method==="GET"){
