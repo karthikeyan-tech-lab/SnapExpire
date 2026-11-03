@@ -25,10 +25,26 @@ const save=x=>localStorage.setItem(STORE,JSON.stringify(x));
 const safeText=(el,text)=>el.textContent=text;
 async function api(action,opts={}){const res=await fetch(API+'?action='+encodeURIComponent(action)+(opts.query||''),opts.init||{});const type=res.headers.get('content-type')||'';if(!res.ok){let message='Request failed ('+res.status+')';if(type.includes('json')){try{message=(await res.json()).error||message}catch{}}throw Error(message)}return opts.blob?res.blob():res.json()}
 function receiverUrl(id,token,protect){const u=new URL(location.origin+location.pathname);u.hash=new URLSearchParams({photo:id,token,watermark:protect?'1':'0'}).toString();return u.href}
+async function optimizePhoto(file){
+  if(file.type!=='image/jpeg'&&file.type!=='image/png'&&file.type!=='image/webp')return file;
+  let bitmap;
+  try{
+    bitmap=await createImageBitmap(file,{imageOrientation:'from-image'});
+    const maxSide=1600,scale=Math.min(1,maxSide/Math.max(bitmap.width,bitmap.height));
+    const width=Math.max(1,Math.round(bitmap.width*scale)),height=Math.max(1,Math.round(bitmap.height*scale));
+    const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
+    const ctx=canvas.getContext('2d',{alpha:false});if(!ctx)return file;
+    ctx.fillStyle='#fff';ctx.fillRect(0,0,width,height);ctx.drawImage(bitmap,0,0,width,height);
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.82));
+    if(!blob||blob.size>=file.size)return file;
+    return new File([blob],file.name.replace(/\\.[^.]+$/, '')+'.jpg',{type:'image/jpeg',lastModified:Date.now()});
+  }catch(e){console.warn('Photo optimization skipped',e);return file}
+  finally{if(bitmap)bitmap.close()}
+}
 let lastUrl='';
-$('upload').onclick=async()=>{const file=$('file').files[0];if(!file){$('message').textContent='Choose a photo first.';return}if(file.size>5*1024*1024){$('message').textContent='Maximum file size is 5 MB.';return}
+$('upload').onclick=async()=>{const file=$('file').files[0];if(!file){$('message').textContent='Choose a photo first.';return}
 $('upload').disabled=true;$('message').textContent='Uploading securely…';$('result').classList.add('hidden');
-try{const form=new FormData();form.append('photo',file);form.append('duration',$('duration').value);form.append('watermark','0');const r=await api('upload',{init:{method:'POST',body:form}});
+try{const prepared=await optimizePhoto(file);if(prepared.size>5*1024*1024)throw Error('Photo is too large (maximum 5 MB).');const form=new FormData();form.append('photo',prepared);form.append('duration',$('duration').value);form.append('watermark','0');const r=await api('upload',{init:{method:'POST',body:form}});
 const protect=false;lastUrl=r.shortCode?location.origin+'/p/'+r.shortCode:receiverUrl(r.id,r.receiverToken,protect);const records=read();records.unshift({id:r.id,token:r.senderToken,name:file.name,created:Date.now(),expires:r.expiresAt,once:true,duration:Number($('duration').value)});save(records);
 safeText($('shareLink'),lastUrl);$('result').classList.remove('hidden');$('message').textContent='Link created. Ready to send to another phone.';renderHistory();
 }catch(e){$('message').textContent='Upload failed: '+e.message+' Check function deployment and JWT setting.'}finally{$('upload').disabled=false}};
