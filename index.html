@@ -4,11 +4,11 @@
 <style>
 :root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#101827;color:#f8fafc;font-family:system-ui,sans-serif;padding:22px}main{max-width:480px;margin:30px auto;background:#1e293b;padding:24px;border-radius:22px}h1{font-size:29px;margin:0 0 6px}h2{font-size:20px}.muted{color:#aab7c9;font-size:14px;line-height:1.5}button,input,select{font:inherit}button,select,input[type=file]{width:100%;padding:13px;margin:9px 0;border:0;border-radius:12px}button{background:#72e4b0;color:#092b1b;font-weight:750;cursor:pointer}button.secondary{background:#334155;color:white}button:disabled{opacity:.6}select{background:#f1f5f9;color:#0f172a}.panel{background:#101827;border-radius:14px;padding:14px;margin:12px 0;overflow-wrap:anywhere}a{color:#72e4b0;overflow-wrap:anywhere}.hidden{display:none!important}.status{font-weight:700}.photo{position:relative}.photo img{width:100%;display:block;border-radius:12px;max-height:70vh;object-fit:contain}.watermark{position:absolute;inset:0;display:flex;justify-content:center;align-items:center;pointer-events:none;color:#fffa;font-size:23px;font-weight:700;text-shadow:0 2px 5px #000;transform:rotate(-16deg)}.actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}.actions button{font-size:14px}small{color:#aab7c9}
 </style></head><body><main>
-<h1>📸 SnapExpire</h1><p class="muted">Temporary photo sharing — cross-phone beta</p>
+<h1>📸 SnapExpire</h1><p class="muted">View Once photo sharing — cross-phone beta</p>
 <section id="sender">
 <button class="secondary" id="historyBtn">📋 My Shared Photos</button><div id="history" class="hidden"></div>
 <input type="file" id="file" accept="image/jpeg,image/png,image/webp">
-<select id="duration"><option value="5">View once — 5 seconds</option><option value="600">10 minutes</option><option value="3600">1 hour</option><option value="86400">24 hours</option></select>
+<select id="duration"><option value="5">View once — 5 seconds</option></select>
 <label><input type="checkbox" id="watermarkOption" checked> Show privacy watermark</label>
 <button id="upload">Create sharing link</button><p class="muted" id="message" role="status"></p>
 <div id="result" class="panel hidden"><strong>Receiver link</strong><p id="shareLink" class="muted"></p><div class="actions"><button id="copy">Copy link</button><button id="whatsapp">WhatsApp</button></div><small>Keep the sender tracking token private. Anyone with the receiver link can claim the photo first.</small></div>
