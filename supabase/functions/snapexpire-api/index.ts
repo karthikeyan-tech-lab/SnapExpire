@@ -5,8 +5,9 @@ const db=createClient(url,key);
 const bucket="snapexpire-photos";
 const ratePepper=Deno.env.get("SNAPEXPIRE_RATE_PEPPER");
 const cleanupSecret=Deno.env.get("SNAPEXPIRE_CLEANUP_SECRET");
-const headers={"Access-Control-Allow-Origin":"https://snapexpire.vercel.app","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"content-type","Access-Control-Expose-Headers":"X-View-Seconds","Cache-Control":"no-store"};
+const headers={"Access-Control-Allow-Origin":"https://snapexpire.vercel.app","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"content-type","Access-Control-Expose-Headers":"X-View-Seconds, X-Watermark","Cache-Control":"no-store"};
 function json(data:unknown,status=200){return new Response(JSON.stringify(data),{status,headers:{...headers,"Content-Type":"application/json"}})}
+function shortCode(){const b=crypto.getRandomValues(new Uint8Array(16));return btoa(String.fromCharCode(...b)).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"")}
 function token(){return Array.from(crypto.getRandomValues(new Uint8Array(32)),x=>x.toString(16).padStart(2,"0")).join("")}
 async function hash(s:string){return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s))),x=>x.toString(16).padStart(2,"0")).join("")}
 const types:Record<string,string>={"image/jpeg":"jpg","image/png":"png","image/webp":"webp"};
@@ -47,18 +48,30 @@ if(allowed.data!==true)return json({error:"Upload limit reached. Try again next 
 const form=await req.formData(),file=form.get("photo");
 if(!(file instanceof File)||!types[file.type]||file.size===0||file.size>5*1024*1024)return json({error:"Invalid photo"},400);
 const duration=Number(form.get("duration"));if(!Number.isInteger(duration)||duration<1||duration>10)return json({error:"Choose 1–10 seconds"},400);
-const id=crypto.randomUUID(),receiver=token(),sender=token(),path=id+"."+types[file.type],expires=new Date(Date.now()+600000).toISOString();
+const id=crypto.randomUUID(),receiver=token(),sender=token(),code=shortCode(),watermark=form.get("watermark")!=="0",path=id+"."+types[file.type],expires=new Date(Date.now()+600000).toISOString();
 const uploaded=await db.storage.from(bucket).upload(path,file,{contentType:file.type,upsert:false});
 if(uploaded.error)throw uploaded.error;
-const inserted=await db.from("shared_photos").insert({id,storage_path:path,expires_at:expires,view_once:true,duration_seconds:duration,receiver_hash:await hash(receiver),sender_hash:await hash(sender)});
+const inserted=await db.from("shared_photos").insert({id,storage_path:path,expires_at:expires,view_once:true,duration_seconds:duration,short_code:code,watermark_enabled:watermark,receiver_hash:await hash(receiver),sender_hash:await hash(sender)});
 if(inserted.error){await db.storage.from(bucket).remove([path]);throw inserted.error}
-return json({id,receiverToken:receiver,senderToken:sender,expiresAt:expires});
+return json({id,shortCode:code,receiverToken:receiver,senderToken:sender,expiresAt:expires});
 }
 if(action==="view"&&req.method==="GET"){
-const id=u.searchParams.get("id")||"",receiver=u.searchParams.get("token")||"";
-if(!validId(id)||!validToken(receiver))return json({error:"Invalid link"},400);
-const receiverHash=await hash(receiver);
-const {data:record,error}=await db.from("shared_photos").select("storage_path,view_once,duration_seconds,expires_at,receiver_hash,status").eq("id",id).eq("receiver_hash",receiverHash).maybeSingle();
+let id=u.searchParams.get("id")||"",receiver=u.searchParams.get("token")||"";
+const code=u.searchParams.get("code");
+let receiverHash="";
+let record;
+let error;
+if(code!==null){
+  if(!/^[A-Za-z0-9_-]{22}$/.test(code))return json({error:"Invalid link"},400);
+  const result=await db.from("shared_photos").select("id,storage_path,view_once,duration_seconds,expires_at,receiver_hash,status,watermark_enabled").eq("short_code",code).maybeSingle();
+  record=result.data;error=result.error;
+  if(record){id=record.id;receiverHash=record.receiver_hash}
+}else{
+  if(!validId(id)||!validToken(receiver))return json({error:"Invalid link"},400);
+  receiverHash=await hash(receiver);
+  const result=await db.from("shared_photos").select("id,storage_path,view_once,duration_seconds,expires_at,receiver_hash,status,watermark_enabled").eq("id",id).eq("receiver_hash",receiverHash).maybeSingle();
+  record=result.data;error=result.error;
+}
 if(error)throw error;
 if(!record||Date.parse(record.expires_at)<=Date.now())return json({error:"Photo unavailable or expired"},410);
 if(!record.view_once)return json({error:"Unsupported photo mode"},410);
@@ -74,7 +87,7 @@ const removed=await db.storage.from(bucket).remove([path]);
 if(removed.error)throw removed.error;
 const updated=await db.from("shared_photos").update({storage_deleted_at:new Date().toISOString()}).eq("id",id);
 if(updated.error)console.error("Storage deleted, metadata update failed",updated.error);
-return new Response(download.data,{headers:{...headers,"Content-Type":download.data.type||"image/jpeg","Content-Disposition":"inline","X-Content-Type-Options":"nosniff","X-View-Seconds":String(record.duration_seconds||5)}});
+return new Response(download.data,{headers:{...headers,"Content-Type":download.data.type||"image/jpeg","Content-Disposition":"inline","X-Content-Type-Options":"nosniff","X-View-Seconds":String(record.duration_seconds||5),"X-Watermark":record.watermark_enabled?"1":"0"}});
 }
 if(action==="status"&&req.method==="GET"){
 const id=u.searchParams.get("id")||"",sender=u.searchParams.get("token")||"";
