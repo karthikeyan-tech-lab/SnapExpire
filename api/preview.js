@@ -9,18 +9,25 @@ module.exports = async (req, res) => {
   if (!/^[A-Za-z0-9_-]{22}$/.test(code)) {
     return res.status(404).setHeader("Content-Type", "text/plain; charset=utf-8").end("Invalid photo link");
   }
-  const previewBase="https://nbhjommpxxqzomubqqfv.supabase.co/storage/v1/object/public/snapexpire-previews/"+encodeURIComponent(code);\n  const canonical = "https://snapexpire.vercel.app/p/" + code;
-  const destination = "https://snapexpire.vercel.app/#code=" + code;\n  // The public preview is deliberately separate from the private one-time photo.\n  // Lookup only non-sensitive public metadata; never claim or download the private image.
+  const previewBase="https://nbhjommpxxqzomubqqfv.supabase.co/storage/v1/object/public/snapexpire-previews/"+encodeURIComponent(code);
+  const canonical = "https://snapexpire.vercel.app/p/" + code;
+  const destination = "https://snapexpire.vercel.app/#code=" + code;
+  // The public preview is deliberately separate from the private one-time photo.
+  // Lookup only non-sensitive public metadata; never claim or download the private image.
   // Show preview metadata to WhatsApp/social crawlers only.
   // For real people, use an immediate HTTP redirect instead of loading
   // an intermediate HTML page and waiting for its JavaScript.
   const agent = String(req.headers["user-agent"] || "");
   const crawler = /WhatsApp|facebookexternalhit|Facebot|Twitterbot|TelegramBot|LinkedInBot|Slackbot|Discordbot|Googlebot|bingbot/i.test(agent);
-  if (!crawler) return res.status(302).setHeader("Location", destination).end();\n  let previewImage="https://placehold.co/1200x630/10241f/ffffff.png?text=%F0%9F%93%B7";\n  for(const ext of ["jpg","png","webp"]){try{const candidate=previewBase+"."+ext;const check=await fetch(candidate,{method:"HEAD",signal:AbortSignal.timeout(1200)});if(check.ok){previewImage=candidate;break}}catch{}}
+  if (!crawler) return res.status(302).setHeader("Location", destination).end();
+  let previewImage="https://placehold.co/1200x630/10241f/ffffff.png?text=%F0%9F%93%B7";
+  for(const ext of ["jpg","png","webp"]){try{const candidate=previewBase+"."+ext;const check=await fetch(candidate,{method:"HEAD",signal:AbortSignal.timeout(1200)});if(check.ok){previewImage=candidate;break}}catch{}}
   res.status(200).setHeader("Content-Type", "text/html; charset=utf-8").end(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<meta property="og:type" content="website">\n<meta property="og:site_name" content="Photo">\n<meta property="og:title" content="Photo">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Photo">
+<meta property="og:title" content="Photo">
 <meta property="og:url" content="${canonical}">
 <meta property="og:image" content="${previewImage}">
 <meta property="og:image:secure_url" content="${previewImage}">
