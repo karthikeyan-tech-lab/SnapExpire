@@ -85,8 +85,12 @@ if(download.error||!download.data)return json({error:"Photo unavailable"},410);
 // If deletion fails, fail closed and report the error, allowing later cleanup.
 const removed=await db.storage.from(bucket).remove([path]);
 if(removed.error)throw removed.error;
-const updated=await db.from("shared_photos").update({storage_deleted_at:new Date().toISOString()}).eq("id",id);
-if(updated.error)console.error("Storage deleted, metadata update failed",updated.error);
+// Cloud file is already deleted. Do not delay photo delivery for bookkeeping.
+const recordDeletion=async()=>{
+  const updated=await db.from("shared_photos").update({storage_deleted_at:new Date().toISOString()}).eq("id",id);
+  if(updated.error)console.error("Storage deleted, metadata update failed",updated.error);
+};
+EdgeRuntime.waitUntil(recordDeletion());
 return new Response(download.data,{headers:{...headers,"Content-Type":download.data.type||"image/jpeg","Content-Disposition":"inline","X-Content-Type-Options":"nosniff","X-View-Seconds":String(record.duration_seconds||5),"X-Watermark":record.watermark_enabled?"1":"0"}});
 }
 if(action==="status"&&req.method==="GET"){
