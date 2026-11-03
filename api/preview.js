@@ -20,10 +20,10 @@ module.exports = (req, res) => {
   res.status(200).setHeader("Content-Type", "text/html; charset=utf-8").end(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<meta property="og:type" content="website">\n<meta property="og:title" content="📷">\n<meta name="twitter:card" content="summary_large_image">\n<meta name="twitter:title" content="📷">
+<meta property="og:type" content="website">
 <meta property="og:url" content="${canonical}">
-<meta property="og:image" content="https://placehold.co/1200x630/10241f/10241f.png?text=%F0%9F%93%B7">
-<meta property="og:image:secure_url" content="https://placehold.co/1200x630/10241f/10241f.png?text=%F0%9F%93%B7">
+<meta property="og:image" content="https://placehold.co/1200x630/10241f/10241f.png">
+<meta property="og:image:secure_url" content="https://placehold.co/1200x630/10241f/10241f.png">
 <meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <title></title>
