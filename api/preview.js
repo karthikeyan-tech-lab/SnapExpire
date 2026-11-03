@@ -11,6 +11,12 @@ module.exports = (req, res) => {
   }
   const canonical = "https://snapexpire.vercel.app/p/" + code;
   const destination = "https://snapexpire.vercel.app/#code=" + code;
+  // Show preview metadata to WhatsApp/social crawlers only.
+  // For real people, use an immediate HTTP redirect instead of loading
+  // an intermediate HTML page and waiting for its JavaScript.
+  const agent = String(req.headers["user-agent"] || "");
+  const crawler = /WhatsApp|facebookexternalhit|Facebot|Twitterbot|TelegramBot|LinkedInBot|Slackbot|Discordbot|Googlebot|bingbot/i.test(agent);
+  if (!crawler) return res.status(302).setHeader("Location", destination).end();
   res.status(200).setHeader("Content-Type", "text/html; charset=utf-8").end(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="referrer" content="no-referrer">
