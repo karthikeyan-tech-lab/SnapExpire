@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/p/:code", "destination": "/api/preview?code=:code" }
+  ]
+}
