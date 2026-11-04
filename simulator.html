@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#101827"><title>SnapExpire — Safe Seen Simulator</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#101827;color:#f8fafc;font:16px system-ui,sans-serif;padding:24px}main{max-width:470px;margin:30px auto;background:#1e293b;padding:25px;border-radius:22px}h1{font-size:26px}p{line-height:1.55;color:#cbd5e1}.note{background:#122d38;border-radius:12px;padding:12px;font-size:14px}button{width:100%;border:0;border-radius:12px;padding:16px;margin:9px 0;font-size:16px;font-weight:700;background:#7ce8b5;color:#072c1b}button:disabled{opacity:.4}button.stop{background:#334155;color:white}.bubble{background:#6837df;padding:16px;border-radius:18px 18px 4px 18px;margin:24px 0 10px auto;max-width:300px;overflow-wrap:anywhere}.state{padding:15px;background:#0f172a;border-radius:12px;margin:16px 0;font-size:18px;min-height:65px}.muted{font-size:13px;color:#aab7c9}a{color:#7ce8b5}
+</style></head><body><main>
+<h1>⏱️ SnapExpire Seen Simulator</h1>
+<p class="note">Safe browser test only. This page does <strong>not</strong> connect to Instagram, detect real Seen status, or unsend real messages.</p>
+<div class="bubble" id="bubble">SNAPEXPIRE_TEST_UNSEND_001</div>
+<p class="muted" id="seenLabel">Dummy message · Not seen</p>
+<div class="state" role="status" aria-live="polite" id="status">Ready. Tap Arm Test.</div>
+<button id="arm">1. Arm Test</button>
+<button id="seen" disabled>2. Simulate New Seen</button>
+<button id="stop" class="stop">Stop / Reset</button>
+<p class="muted">The five-second timer runs while this page is open. Leaving the page stops the simulation. No photos or messages are sent or stored.</p>
+<p><a href="/">← Back to SnapExpire</a></p>
+</main><script>
+const $=id=>document.getElementById(id);
+let armed=false,deadline=0,timer=null;
+function clearTimer(){if(timer!==null){clearInterval(timer);timer=null}}
+function reset(){clearTimer();armed=false;deadline=0;$('bubble').textContent='SNAPEXPIRE_TEST_UNSEND_001';$('bubble').style.display='block';$('seenLabel').textContent='Dummy message · Not seen';$('status').textContent='Ready. Tap Arm Test.';$('seen').disabled=true;$('arm').disabled=false}
+$('arm').onclick=()=>{reset();armed=true;$('arm').disabled=true;$('seen').disabled=false;$('status').textContent='Armed. Waiting for simulated Seen.'};
+$('seen').onclick=()=>{
+ if(!armed||deadline)return;
+ $('seen').disabled=true;$('seenLabel').textContent='Seen · just now';
+ deadline=performance.now()+5000;
+ function tick(){if(!armed)return;const left=Math.max(0,deadline-performance.now());if(left<=0){clearTimer();armed=false;$('bubble').style.display='none';$('status').textContent='Simulated Unsend complete. Dummy message hidden.';$('seenLabel').textContent='Simulation finished';$('arm').disabled=false;return}
+ $('status').textContent='Seen detected. Simulated Unsend in '+Math.ceil(left/1000)+' seconds…'}
+ tick();timer=setInterval(tick,80);
+};
+$('stop').onclick=reset;
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&armed)reset()});
+</script></body></html>
