@@ -80,15 +80,14 @@ async function openViewer(){
  $('viewerMessage').textContent='Opening private photo…';$('viewerMessage').classList.remove('error');
  history.replaceState(null,'',location.pathname+location.search);
  if(/Instagram|FBAN|FBAV|FB_IAB/i.test(navigator.userAgent)){
-  // Never claim a one-time photo from Instagram's unreliable embedded viewer.
-  // Keep the original short link available for opening in an external browser.
-  const shareUrl=code?location.origin+'/p/'+encodeURIComponent(code):location.origin+location.pathname+'#'+new URLSearchParams({photo:id,token}).toString();
-  $('viewerMessage').textContent='Instagram browser cannot reliably show this photo. Open the link in Chrome instead. Your one-time view has not been used by this page.';
+  // Explicit user action avoids automatic one-time claims during embedded browser navigation.
+  $('viewerMessage').textContent='Ready to view once. This will use your one-time photo access.';
   $('viewerMessage').classList.add('error');
-  $('close').textContent='Copy link for Chrome';$('close').classList.remove('hidden');$('close').classList.add('start-view');
-  $('close').onclick=async()=>{
-   try{await navigator.clipboard.writeText(shareUrl);$('viewerMessage').textContent='Link copied. Open Chrome and paste the link into the address bar.'}
-   catch{$('viewerMessage').textContent='Use Instagram’s ⋮ menu and choose Open in external browser / Chrome. This page has not opened your photo.'}
+  $('close').textContent='View photo once';$('close').classList.remove('hidden');$('close').classList.add('start-view');
+  $('close').onclick=()=>{
+   $('close').classList.add('hidden');$('close').classList.remove('start-view');
+   $('viewerMessage').textContent='Loading photo…';$('viewerMessage').classList.add('error');
+   loadPrivatePhoto(id,token,code);
   };
   return;
  }
