@@ -52,7 +52,8 @@ if(!(file instanceof File)||!types[file.type]||file.size===0||file.size>5*1024*1
 const preview=form.get("preview");
 if(preview!==null&&(!(preview instanceof File)||!types[preview.type]||preview.size===0||preview.size>2*1024*1024))return json({error:"Invalid preview photo (max 2 MB)"},400);
 const duration=Number(form.get("duration"));if(!Number.isInteger(duration)||duration<1||duration>10)return json({error:"Choose 1–10 seconds"},400);
-const expiryDays=Number(form.get("expiryDays"));if(!Number.isInteger(expiryDays)||expiryDays<1||expiryDays>3)return json({error:"Choose 1, 2 or 3 days for link expiry"},400);\nconst id=crypto.randomUUID(),receiver=token(),sender=token(),code=shortCode(),watermark=form.get("watermark")!=="0",path=id+"."+types[file.type],expires=new Date(Date.now()+expiryDays*86400000).toISOString();
+const expiryDays=Number(form.get("expiryDays"));if(!Number.isInteger(expiryDays)||expiryDays<1||expiryDays>3)return json({error:"Choose 1, 2 or 3 days for link expiry"},400);
+const id=crypto.randomUUID(),receiver=token(),sender=token(),code=shortCode(),watermark=form.get("watermark")!=="0",path=id+"."+types[file.type],expires=new Date(Date.now()+expiryDays*86400000).toISOString();
 const uploaded=await db.storage.from(bucket).upload(path,file,{contentType:file.type,upsert:false});
 if(uploaded.error)throw uploaded.error;
 if(preview instanceof File){
