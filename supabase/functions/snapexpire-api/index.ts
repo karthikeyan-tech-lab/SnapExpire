@@ -6,7 +6,7 @@ const bucket="snapexpire-photos";
 const previewBucket="snapexpire-previews";
 const ratePepper=Deno.env.get("SNAPEXPIRE_RATE_PEPPER");
 const cleanupSecret=Deno.env.get("SNAPEXPIRE_CLEANUP_SECRET");
-const headers={"Access-Control-Allow-Origin":"https://snapexpire.vercel.app","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"content-type","Access-Control-Expose-Headers":"X-View-Seconds, X-Watermark","Cache-Control":"no-store"};
+const headers={"Access-Control-Allow-Origin":"https://snapexpire.vercel.app","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"content-type,x-snapexpire-view","Access-Control-Expose-Headers":"X-View-Seconds, X-Watermark","Cache-Control":"no-store"};
 function json(data:unknown,status=200){return new Response(JSON.stringify(data),{status,headers:{...headers,"Content-Type":"application/json"}})}
 function shortCode(){const b=crypto.getRandomValues(new Uint8Array(16));return btoa(String.fromCharCode(...b)).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"")}
 function token(){return Array.from(crypto.getRandomValues(new Uint8Array(32)),x=>x.toString(16).padStart(2,"0")).join("")}
@@ -64,7 +64,7 @@ const inserted=await db.from("shared_photos").insert({id,storage_path:path,expir
 if(inserted.error){await db.storage.from(bucket).remove([path]);if(preview instanceof File)await db.storage.from(previewBucket).remove([code+"."+types[preview.type]]);throw inserted.error}
 return json({id,shortCode:code,receiverToken:receiver,senderToken:sender,expiresAt:expires});
 }
-if(action==="view"&&req.method==="GET"){
+if(action==="view"&&req.method==="POST"&&req.headers.get("x-snapexpire-view")==="reveal"){
 let id=u.searchParams.get("id")||"",receiver=u.searchParams.get("token")||"";
 const code=u.searchParams.get("code");
 let receiverHash="";
@@ -103,6 +103,7 @@ EdgeRuntime.waitUntil(recordDeletion());
 EdgeRuntime.waitUntil(db.storage.from(previewBucket).remove([(code||"")+".jpg",(code||"")+".png",(code||"")+".webp"]).then(()=>{}));
 return new Response(download.data,{headers:{...headers,"Content-Type":download.data.type||"image/jpeg","Content-Disposition":"inline","X-Content-Type-Options":"nosniff","X-View-Seconds":String(record.duration_seconds||5),"X-Watermark":record.watermark_enabled?"1":"0"}});
 }
+if(action==="view")return json({error:"Use the updated SnapExpire viewer"},405);
 if(action==="status"&&req.method==="GET"){
 const id=u.searchParams.get("id")||"",sender=u.searchParams.get("token")||"";
 if(!validId(id)||!validToken(sender))return json({error:"Invalid tracking link"},400);
