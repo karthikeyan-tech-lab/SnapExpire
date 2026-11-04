@@ -55,9 +55,38 @@ async function renderHistory(){const area=$('history');area.replaceChildren();co
 const clear=document.createElement('button');clear.className='secondary';clear.textContent='Clear this browser’s history';clear.onclick=()=>{if(confirm('Remove tracking records from this browser? This will not delete cloud records.')){save([]);renderHistory()}};area.append(clear);for(const r of records){const card=document.createElement('div');card.className='panel';const title=document.createElement('strong');title.textContent=r.name;title.style.overflowWrap='anywhere';const line=document.createElement('p');line.className='muted';line.textContent='Checking status…';const button=document.createElement('button');button.className='secondary';button.textContent='Refresh status';button.onclick=()=>refresh(r,line);card.append(title,line,button);area.append(card);refresh(r,line)}}
 async function refresh(r,line){try{const d=await api('status',{query:'&id='+encodeURIComponent(r.id)+'&token='+encodeURIComponent(r.token)});const expired=d.expired;const state=d.storage_deleted_at?'✓ Opened · cloud copy deleted':expired?'Expired · deletion unconfirmed':d.opened_at?'Opened':'Link created';line.textContent=state+' • '+('View once · '+(d.duration_seconds||r.duration||5)+'s')+' • Created '+new Date(d.created_at).toLocaleString()+(d.opened_at?' • Opened '+new Date(d.opened_at).toLocaleString():'')}catch(e){line.textContent='Status unavailable: '+e.message}}
 function closePhoto(message){$('photoBox').classList.add('hidden');$('close').classList.add('hidden');$('countdown').textContent='';$('viewerMessage').textContent=message||'';$('viewerMessage').classList.toggle('error',Boolean(message));$('image').removeAttribute('src')}
-async function openViewer(){const p=new URLSearchParams(location.hash.slice(1));const id=p.get('photo'),token=p.get('token'),code=p.get('code');if(!code&&(!id||!token))return;
-document.body.classList.add('viewing');$('sender').classList.add('hidden');$('viewer').classList.remove('hidden');$('viewerMessage').textContent='Opening private photo…';$('viewerMessage').classList.remove('error');history.replaceState(null,'',location.pathname+location.search);
-try{const query=code?'&code='+encodeURIComponent(code):'&id='+encodeURIComponent(id)+'&token='+encodeURIComponent(token);const response=await fetch(API+'?action=view'+query);if(!response.ok){let error='Request failed';try{error=(await response.json()).error||error}catch{}throw Error(error)}const seconds=Math.max(1,Math.min(10,Number(response.headers.get('X-View-Seconds'))||5));const blob=await response.blob();const src=URL.createObjectURL(blob);const img=$('image');img.onload=()=>{URL.revokeObjectURL(src);$('photoBox').classList.remove('hidden');$('viewerMessage').textContent='';const end=Date.now()+seconds*1000;const tick=()=>{if(!$('photoBox').classList.contains('hidden')){const left=Math.max(0,Math.ceil((end-Date.now())/1000));if(left<=0)closePhoto('Photo closed. This View Once link cannot be opened again.');else setTimeout(tick,200)}};tick()};img.onerror=()=>closePhoto('Unable to display photo.');img.src=src;
-}catch(e){closePhoto('Photo unavailable or already viewed. '+e.message)}}
+async function loadPrivatePhoto(id,token,code){
+try{
+ const query=code?'&code='+encodeURIComponent(code):'&id='+encodeURIComponent(id)+'&token='+encodeURIComponent(token);
+ const response=await fetch(API+'?action=view'+query,{cache:'no-store'});
+ if(!response.ok){let error='Request failed';try{error=(await response.json()).error||error}catch{}throw Error(error)}
+ const seconds=Math.max(1,Math.min(10,Number(response.headers.get('X-View-Seconds'))||5));
+ const blob=await response.blob();const src=URL.createObjectURL(blob);const img=$('image');
+ img.onload=()=>{
+  $('photoBox').classList.remove('hidden');$('viewerMessage').classList.remove('error');$('viewerMessage').textContent='';
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+   const end=performance.now()+seconds*1000;
+   const tick=()=>{if(!$('photoBox').classList.contains('hidden')){if(performance.now()>=end){URL.revokeObjectURL(src);closePhoto('Photo closed. This link cannot be opened again.')}else setTimeout(tick,100)}};tick();
+  }));
+ };
+ img.onerror=()=>{URL.revokeObjectURL(src);closePhoto('Unable to display photo in this browser.')};
+ img.src=src;
+}catch(e){closePhoto('Photo unavailable or already viewed. '+e.message)}
+}
+async function openViewer(){
+ const p=new URLSearchParams(location.hash.slice(1));const id=p.get('photo'),token=p.get('token'),code=p.get('code');
+ if(!code&&(!id||!token))return;
+ document.body.classList.add('viewing');$('sender').classList.add('hidden');$('viewer').classList.remove('hidden');
+ $('viewerMessage').textContent='Opening private photo…';$('viewerMessage').classList.remove('error');
+ history.replaceState(null,'',location.pathname+location.search);
+ if(/Instagram|FBAN|FBAV|FB_IAB/i.test(navigator.userAgent)){
+  $('viewerMessage').textContent='Instagram browser may not display View Once photos. For best results, open this link in Chrome. Tapping below will use your one view.';
+  $('viewerMessage').classList.add('error');
+  $('close').textContent='Tap to view once';$('close').classList.remove('hidden');$('close').classList.add('start-view');
+  $('close').onclick=()=>{$('close').classList.add('hidden');$('close').classList.remove('start-view');$('viewerMessage').classList.remove('error');loadPrivatePhoto(id,token,code)};
+  return;
+ }
+ await loadPrivatePhoto(id,token,code);
+}
 openViewer();
 </script></body></html>
